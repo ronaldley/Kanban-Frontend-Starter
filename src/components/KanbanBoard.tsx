@@ -19,8 +19,8 @@ function KanbanBoard() {
       }
       const data: Item[] = await response.json();
       setItems(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
       toast("The items have been loaded successfully");
@@ -28,7 +28,27 @@ function KanbanBoard() {
   };
 
   useEffect(() => {
-    fetchItems();
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch('https://hb-kanban-backend.hb-user.workers.dev/items');
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status}`);
+        }
+        const data: Item[] = await response.json();
+        if (!cancelled) setItems(data);
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          toast("The items have been loaded successfully");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) {
@@ -123,9 +143,10 @@ function KanbanBoard() {
       toast.success(`Item ${itemId} moved to ${newState}`);
       fetchItems(); // Reload items to ensure consistency
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating item state:', error);
-      toast.error(`Failed to move item ${itemId}: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to move item ${itemId}: ${message}`);
       // Revert state on error
       setItems(items.map(item =>
         item.id === parseInt(itemId, 10) ? { ...item, state: originalState } : item
